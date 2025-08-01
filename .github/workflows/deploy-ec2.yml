@@ -3,133 +3,78 @@ name: Deploy to EC2
 on:
   push:
     branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'production'
-        type: choice
-        options:
-          - staging
-          - production
+
+env:
+  AWS_DEFAULT_REGION: us-east-1
+  AWS_REGION: us-east-1
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Run tests
-        run: |
-          echo "✅ Tests completed successfully"
-
   deploy:
-    needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION || 'us-east-1' }}
-
-      - name: Create deployment package
-        run: |
-          mkdir -p /tmp/deployment-source
-          cp -r . /tmp/deployment-source/
-          cd /tmp/deployment-source
-          rm -rf .git node_modules __pycache__ .env .DS_Store output
-          find . -name "*.pyc" -delete
-          find . -name "*.log" -delete
-          tar -czf deployment-package.tar.gz .
-          cp deployment-package.tar.gz $GITHUB_WORKSPACE/
-
-      - name: Deploy to EC2
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || '22' }}
-          script: |
-            mkdir -p /tmp/deployment
-            cd /home/ubuntu/aina-server
-            if [ -f docker-compose.yml ]; then
-              docker-compose down || true
-            fi
-            if [ -d /home/ubuntu/aina-server ]; then
-              cp -r /home/ubuntu/aina-server /home/ubuntu/aina-server.backup.$(date +%Y%m%d_%H%M%S)
-            fi
-
-      - name: Upload deployment package
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || '22' }}
-          source: "deployment-package.tar.gz"
-          target: "/tmp/deployment/"
-
-      - name: Extract and deploy
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USERNAME || 'ubuntu' }}
-          key: ${{ secrets.EC2_SSH_KEY }}
-          port: ${{ secrets.EC2_PORT || '22' }}
-          script: |
-            cd /tmp/deployment
-            tar -xzf deployment-package.tar.gz
-            rm -rf /home/ubuntu/aina-server
-            mv * /home/ubuntu/aina-server/
-            chown -R ubuntu:ubuntu /home/ubuntu/aina-server
-            chmod +x /home/ubuntu/aina-server/*.sh || true
-            cat > /home/ubuntu/aina-server/.env << EOF
-            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-            ENVIRONMENT=${{ github.event.inputs.environment || 'production' }}
-            GITHUB_SHA=${{ github.sha }}
-            DEPLOYED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-            EOF
-            cd /home/ubuntu/aina-server
-            docker-compose down || true
-            docker system prune -f
-            docker-compose up -d --build
-            sleep 30
-            if curl -f http://localhost:5000/health > /dev/null 2>&1; then
-              echo "✅ Deployment successful!"
-            else
-              echo "❌ Deployment failed!"
-              exit 1
-            fi
-
-  notify:
-    needs: deploy
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Notify deployment status
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment to EC2 completed successfully!"
-            echo "Environment: ${{ github.event.inputs.environment || 'production' }}"
-            echo "Commit: ${{ github.sha }}"
-            echo "Run ID: ${{ github.run_id }}"
-          else
-            echo "❌ Deployment to EC2 failed!"
-            echo "Check the logs for more details."
-          fi 
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+        
+    - name: Create deployment package
+      run: |
+        chmod +x ./deploy-robust.sh
+        ./deploy-robust.sh
+        
+    - name: Deploy to EC2 using CloudFormation
+      run: |
+        chmod +x ./deploy-cloudformation.sh
+        ./deploy-cloudformation.sh
+        
+    - name: Deploy application to EC2
+      run: |
+        # Get the EC2 instance IP from CloudFormation outputs
+        INSTANCE_IP=$(aws cloudformation describe-stacks \
+          --stack-name fashion-pipeline-stack \
+          --query 'Stacks[0].Outputs[?OutputKey==`PublicIP`].OutputValue' \
+          --output text \
+          --region us-east-1)
+        
+        echo "🌍 EC2 Instance IP: $INSTANCE_IP"
+        
+        # Wait for instance to be ready
+        echo "⏳ Waiting for instance to be ready..."
+        sleep 60
+        
+        # Upload and deploy application
+        echo "📦 Uploading deployment package..."
+        scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2-key.pem deployment-package.tar.gz ubuntu@$INSTANCE_IP:~/
+        
+        echo "🚀 Deploying application..."
+        ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2-key.pem ubuntu@$INSTANCE_IP << 'EOF'
+          # Extract deployment package
+          tar -xzf deployment-package.tar.gz
+          
+          # Install Python and dependencies
+          sudo apt-get update -y
+          sudo apt-get install -y python3 python3-pip python3-venv
+          
+          # Create virtual environment
+          python3 -m venv venv
+          source venv/bin/activate
+          
+          # Install requirements
+          pip install -r requirements.txt
+          
+          # Start the application
+          nohup python direct_pipeline.py > app.log 2>&1 &
+          
+          echo "✅ Application deployed successfully!"
+          echo "📊 Check logs: tail -f app.log"
+        EOF
+        
+        echo "🎉 Deployment completed!"
+        echo "🌍 Application URL: http://$INSTANCE_IP:5000" 
