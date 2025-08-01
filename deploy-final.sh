@@ -25,28 +25,12 @@ rm -rf .git node_modules __pycache__ .env .DS_Store output 2>/dev/null || true
 find . -name "*.pyc" -delete 2>/dev/null || true
 find . -name "*.log" -delete 2>/dev/null || true
 
-# Create tar archive using a different approach
+# Create tar archive in parent directory to avoid circular reference
 echo "Creating deployment package..."
-# Use tar with --exclude to avoid the file change error
-tar -czf deployment-package.tar.gz \
-    --exclude='.git' \
-    --exclude='node_modules' \
-    --exclude='__pycache__' \
-    --exclude='.env' \
-    --exclude='.DS_Store' \
-    --exclude='output' \
-    --exclude='*.pyc' \
-    --exclude='*.log' \
-    --exclude='deployment-package.tar.gz' \
-    . 2>/dev/null || {
-    echo "First tar attempt failed, trying alternative method..."
-    # Alternative: create tar from parent directory
-    cd ..
-    tar -czf "$DEPLOY_DIR/deployment-package.tar.gz" -C "$DEPLOY_DIR" . 2>/dev/null || {
-        echo "Failed to create deployment package"
-        exit 1
-    }
-    cd "$DEPLOY_DIR"
+cd /tmp
+tar -czf "deployment-package.tar.gz" -C "$DEPLOY_DIR" . 2>/dev/null || {
+    echo "Failed to create deployment package"
+    exit 1
 }
 
 # Verify the package was created
@@ -70,5 +54,6 @@ fi
 # Cleanup
 echo "Cleaning up temporary files..."
 rm -rf "$DEPLOY_DIR"
+rm -f deployment-package.tar.gz
 
 echo "Deployment packaging completed successfully!" 

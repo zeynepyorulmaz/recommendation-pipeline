@@ -11,9 +11,27 @@ DEPLOY_DIR="/tmp/deployment-source"
 echo "Creating deployment directory: $DEPLOY_DIR"
 mkdir -p "$DEPLOY_DIR"
 
-# Copy files to deployment directory
+# Copy files using rsync with exclusions to avoid permission issues
 echo "Copying files..."
-cp -r . "$DEPLOY_DIR/"
+rsync -av --exclude='.git' \
+         --exclude='node_modules' \
+         --exclude='__pycache__' \
+         --exclude='.env' \
+         --exclude='.DS_Store' \
+         --exclude='output' \
+         --exclude='*.pyc' \
+         --exclude='*.log' \
+         --exclude='*.tmp' \
+         --exclude='*.swp' \
+         --exclude='*.swo' \
+         --exclude='.vscode' \
+         --exclude='.idea' \
+         --exclude='*.tar.gz' \
+         --exclude='deployment-package.tar.gz' \
+         --exclude='aina-server-key.pem' \
+         ./ "$DEPLOY_DIR/" 2>/dev/null || {
+    echo "⚠️  Some files could not be copied due to permissions, continuing..."
+}
 
 # Change to deployment directory
 cd "$DEPLOY_DIR"
