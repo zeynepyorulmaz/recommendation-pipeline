@@ -4,6 +4,16 @@ on:
   push:
     branches: [ main, master ]
   workflow_dispatch:
+    inputs:
+      deploy_method:
+        description: 'Deployment method'
+        required: true
+        default: 'cloudformation'
+        type: choice
+        options:
+          - cloudformation
+          - direct-ec2
+          - s3-deploy
 
 env:
   AWS_DEFAULT_REGION: us-east-1
@@ -26,55 +36,34 @@ jobs:
         
     - name: Create deployment package
       run: |
+        echo "📦 Creating deployment package..."
         chmod +x ./deploy-robust.sh
         ./deploy-robust.sh
+        echo "✅ Deployment package created: $(ls -lh deployment-package.tar.gz)"
         
-    - name: Deploy to EC2 using CloudFormation
+    - name: Deploy using CloudFormation
+      if: github.event.inputs.deploy_method == 'cloudformation' || github.event_name == 'push'
       run: |
+        echo "🚀 Deploying using CloudFormation..."
         chmod +x ./deploy-cloudformation.sh
         ./deploy-cloudformation.sh
         
-    - name: Deploy application to EC2
+    - name: Deploy directly to EC2
+      if: github.event.inputs.deploy_method == 'direct-ec2'
       run: |
-        # Get the EC2 instance IP from CloudFormation outputs
-        INSTANCE_IP=$(aws cloudformation describe-stacks \
-          --stack-name fashion-pipeline-stack \
-          --query 'Stacks[0].Outputs[?OutputKey==`PublicIP`].OutputValue' \
-          --output text \
-          --region us-east-1)
+        echo "🚀 Deploying directly to EC2..."
+        chmod +x ./deploy-ec2-simple.sh
+        ./deploy-ec2-simple.sh
         
-        echo "🌍 EC2 Instance IP: $INSTANCE_IP"
+    - name: Deploy to S3
+      if: github.event.inputs.deploy_method == 's3-deploy'
+      run: |
+        echo "🚀 Deploying to S3..."
+        aws s3 cp deployment-package.tar.gz s3://your-bucket-name/
+        echo "✅ Package uploaded to S3"
         
-        # Wait for instance to be ready
-        echo "⏳ Waiting for instance to be ready..."
-        sleep 60
-        
-        # Upload and deploy application
-        echo "📦 Uploading deployment package..."
-        scp -o StrictHostKeyChecking=no -i ~/.ssh/ec2-key.pem deployment-package.tar.gz ubuntu@$INSTANCE_IP:~/
-        
-        echo "🚀 Deploying application..."
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/ec2-key.pem ubuntu@$INSTANCE_IP << 'EOF'
-          # Extract deployment package
-          tar -xzf deployment-package.tar.gz
-          
-          # Install Python and dependencies
-          sudo apt-get update -y
-          sudo apt-get install -y python3 python3-pip python3-venv
-          
-          # Create virtual environment
-          python3 -m venv venv
-          source venv/bin/activate
-          
-          # Install requirements
-          pip install -r requirements.txt
-          
-          # Start the application
-          nohup python direct_pipeline.py > app.log 2>&1 &
-          
-          echo "✅ Application deployed successfully!"
-          echo "📊 Check logs: tail -f app.log"
-        EOF
-        
+    - name: Show deployment status
+      run: |
         echo "🎉 Deployment completed!"
-        echo "🌍 Application URL: http://$INSTANCE_IP:5000" 
+        echo "📋 Check AWS Console for details"
+        echo "🌐 Application should be available at the provided URL" 
