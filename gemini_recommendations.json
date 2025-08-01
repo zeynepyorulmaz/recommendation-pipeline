@@ -1,0 +1,52 @@
+{
+  "2": {
+    "type": "top, t-shirt, sweatshirt",
+    "bbox": [
+      137,
+      313,
+      398,
+      603
+    ],
+    "recommendations": [
+      "This top, t-shirt, sweatshirt offers wonderful styling versatility for any occasion!",
+      "The top, t-shirt, sweatshirt can be beautifully paired with various complementary pieces to create stunning looks.",
+      "Accessorizing thoughtfully will elevate this top, t-shirt, sweatshirt into a complete, polished ensemble."
+    ]
+  },
+  "7": {
+    "type": "pants",
+    "bbox": [
+      181,
+      559,
+      337,
+      859
+    ],
+    "recommendations": [
+      "This pants offers wonderful styling versatility for any occasion!",
+      "The pants can be beautifully paired with various complementary pieces to create stunning looks.",
+      "Accessorizing thoughtfully will elevate this pants into a complete, polished ensemble."
+    ]
+  },
+  "24": {
+    "type": "shoe",
+    "bbox": [
+      144,
+      833,
+      316,
+      925
+    ],
+    "recommendations": [
+      "This shoe offers wonderful styling versatility for any occasion!",
+      "The shoe can be beautifully paired with various complementary pieces to create stunning looks.",
+      "Accessorizing thoughtfully will elevate this shoe into a complete, polished ensemble."
+    ]
+  },
+  "overall_outfit": {
+    "type": "Complete Outfit",
+    "recommendations": [
+      "This outfit creates a beautiful, cohesive look that showcases excellent fashion sense!",
+      "The individual pieces complement each other beautifully, creating a harmonious and stylish ensemble.",
+      "The overall ensemble works wonderfully together and can be elevated with thoughtful accessories to create a complete, polished look."
+    ]
+  }
+}
